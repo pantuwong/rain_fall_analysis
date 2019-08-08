@@ -1,6 +1,10 @@
 import os
 
 import pandas as pd 
+import matplotlib.pyplot as plt
+
+import seaborn as sns
+
 
 def get_filename_list( path ):
     ''' This function gets all .csv file in this path
@@ -37,13 +41,17 @@ class RainFallAnalyzer:
         self.station_name_list = get_stationname_list( self.data_filename_list ) 
         
         # define variables
-        self.daily_avg = {}
-        self.monthly_avg = {}
-        self.yearly_avg = {}
-
+        self.daily_avg = None
+        self.monthly_avg = None
+        self.yearly_avg = None
+        self.daily_peak = None
+        
     def calculate_average_rainfall_daily( self, station_name ):
         ''' This function calculates average rainfall daily
         '''
+        
+        if self.daily_avg == None:
+            self.daily_avg = {}
         
         # filename
         filename = station_name + '.csv'
@@ -92,6 +100,10 @@ class RainFallAnalyzer:
     def calculate_average_rainfall_monthly( self, station_name ):
         ''' This function calculates average rainfall monthly
         '''
+        
+        if self.monthly_avg == None:
+            self.monthly_avg = {}
+        
         # filename
         filename = station_name + '.csv'
         assert filename in self.data_filename_list
@@ -139,6 +151,10 @@ class RainFallAnalyzer:
     def calculate_average_rainfall_yearly( self, station_name ):
         ''' This function calculates average rainfall monthly
         '''
+        
+        if self.yearly_avg == None:
+            self.yearly_avg = {}
+            
         # filename
         filename = station_name + '.csv'
         assert filename in self.data_filename_list
@@ -181,7 +197,107 @@ class RainFallAnalyzer:
         
         if not os.path.exists( os.path.join( self.path, 'result_csv') ):
             os.mkdir(os.path.join( self.path, 'result_csv') )
-        df.to_csv( os.path.join( self.path, 'result_csv', station_name+'_yearly_avg.csv' ) )            
+        df.to_csv( os.path.join( self.path, 'result_csv', station_name+'_yearly_avg.csv' ) )        
+
+    def calculate_peak_rainfall_daily( self, station_name ):
+        ''' This function calculates average rainfall daily
+        '''
         
+        if self.daily_peak == None:
+            self.daily_peak = {}
+        
+        # filename
+        filename = station_name + '.csv'
+        assert filename in self.data_filename_list
+
+        # read csv using pandas
+        data = pd.read_csv( os.path.join( self.path, filename ) )
+        
+        # get all date
+        date = data.Date.unique()
+        
+        # process data
+        temp_data = {}
+        for index, row in data.iterrows():
+            data_date = row['Date']
+            data_rain = row['Rain (mm)']
+            
+            if data_date not in temp_data.keys():
+                temp_data[data_date] = float(data_rain)
+            else:
+                if float(data_rain) > temp_data[data_date]:
+                    temp_data[data_date] = float(data_rain)
+        
+        # calculate average and put in dataframe
+        date_list = []
+        peak_list = []
+        type_list = []
+        for d in date:
+            peak = temp_data[d]
+            date_list.append( d )
+            peak_list.append( peak )
+            if peak <= 10:
+                type_list.append('light')
+            elif peak <= 30:
+                type_list.append('moderate')
+            elif peak <= 60:
+                type_list.append('heavy')
+            else:
+                type_list.append('very heavy')
+        
+        # initial value
+        df = pd.DataFrame(columns=['Date','Peak (mm)','Intensity'])
+        df['Date'] = date_list
+        df['Peak (mm)'] = peak_list
+        df['Intensity'] = type_list
+        
+        # set dataframe to dictionary
+        self.daily_peak[station_name] = df
+        
+        if not os.path.exists( os.path.join( self.path, 'result_csv') ):
+            os.mkdir(os.path.join( self.path, 'result_csv') )       
+        df.to_csv( os.path.join( self.path, 'result_csv', station_name+'_daily_peak.csv' ) )
+         
+    def seasonal_trend( self, station_name, year ):
+        
+        #   calculate monthly average
+        if self.monthly_avg == None:
+            self.calculate_average_rainfall_monthly( station_name )
+        
+        #   get monthy average dataframe
+        df = self.monthly_avg[station_name]
+        
+        #   filter dataframe to be only the year
+        df_filtered = pd.DataFrame(columns=['Month','Average (mm)'])
+        filter_month = []
+        filter_rain = []
+        custom_pallete = {}
+        for index, row in df.iterrows():
+            month = row['Month']
+            if str(year) in month:
+                avg = row['Average (mm)']
+                filter_month.append(month)
+                filter_rain.append(avg)
+                splt = month.split('/')
+                m = int(splt[0])
+                if m >= 6 and m <= 9:
+                    custom_pallete[month] = 'b'
+                else:
+                    custom_pallete[month] = 'r'
+        df_filtered['Month'] = filter_month
+        df_filtered['Average (mm)'] = filter_rain
+        
+        #   plot
+        plt.figure(figsize=(16,9), dpi=100)
+        ax = sns.lineplot(x="Month", y="Average (mm)",  palette=custom_pallete, data=df_filtered)
+        plt.xticks(rotation=45)
+        plt.title('Seasonal Trend ('+str(year)+')')
+        plt.axvspan(0, 5, facecolor='r', alpha=0.2)
+        plt.axvspan(5, 8, facecolor='g', alpha=0.2)
+        plt.axvspan(8, 12, facecolor='r', alpha=0.2)
+  
+        if not os.path.exists( os.path.join( self.path, 'result_png') ):
+            os.mkdir(os.path.join( self.path, 'result_png') )     
+        plt.savefig(  os.path.join( self.path, 'result_png', station_name+'_seasonal_trend_'+str(year)+'.png' ) )
         
  
