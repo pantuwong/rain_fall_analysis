@@ -42,7 +42,9 @@ class RainFallAnalyzer:
         self.yearly_avg = {}
 
     def calculate_average_rainfall_daily( self, station_name ):
-
+        ''' This function calculates average rainfall daily
+        '''
+        
         # filename
         filename = station_name + '.csv'
         assert filename in self.data_filename_list
@@ -53,8 +55,8 @@ class RainFallAnalyzer:
         # get all date
         date = data.Date.unique()
         
-        # initial value
-        self.daily_avg[station_name] = pd.DataFrame(columns=['Date','Average (mm)'])
+        # count date
+        count = data.Date.value_counts()
         
         # process data
         temp_data = {}
@@ -63,20 +65,123 @@ class RainFallAnalyzer:
             data_rain = row['Rain (mm)']
             
             if data_date not in temp_data.keys():
-                temp_data[data_date] = 0.0
+                temp_data[data_date] = float(data_rain)
             else:
                 temp_data[data_date] += float(data_rain)
         
         # calculate average and put in dataframe
+        date_list = []
+        avg_list = []
         for d in date:
-            count = data[data['Date']==d].count()
-            print(count)
-            avg = float(temp_data[date])/count
-            self.daily_avg[station_name].append({'Date':d,'Rain (mm)':avg})
+            avg = temp_data[d]/count[d]
+            date_list.append( d )
+            avg_list.append( avg )
+        
+        # initial value
+        df = pd.DataFrame(columns=['Date','Average (mm)'])
+        df['Date'] = date_list
+        df['Average (mm)'] = avg_list
+        
+        # set dataframe to dictionary
+        self.daily_avg[station_name] = df
+        
+        if not os.path.exists( os.path.join( self.path, 'result_csv') ):
+            os.mkdir(os.path.join( self.path, 'result_csv') )       
+        df.to_csv( os.path.join( self.path, 'result_csv', station_name+'_daily_avg.csv' ) )
+    
+    def calculate_average_rainfall_monthly( self, station_name ):
+        ''' This function calculates average rainfall monthly
+        '''
+        # filename
+        filename = station_name + '.csv'
+        assert filename in self.data_filename_list
+
+        # read csv using pandas
+        data = pd.read_csv( os.path.join( self.path, filename ) )
             
-        print(self.daily_avg[station_name])
+        # process data
+        temp_data = {}
+        count_data = {}
+        month = []
+        for index, row in data.iterrows():
+            data_date = row['Date']
+            date_info = data_date.split('/')
+            data_month = date_info[1]+'/'+date_info[2]
+            if data_month not in month:
+                month.append(data_month)
+            data_rain = row['Rain (mm)']
             
+            if data_date not in temp_data.keys():
+                temp_data[data_month] = float(data_rain)
+                count_data[data_month] = 1
+            else:
+                temp_data[data_month] += float(data_rain)
+                count_data[data_month] += 1
+        
+        # calculate average and put in dataframe
+        avg_list = []
+        for m in month:
+            avg = temp_data[m]/count_data[m]
+            avg_list.append( avg )
+        
+        # initial value
+        df = pd.DataFrame(columns=['Month','Average (mm)'])
+        df['Month'] = month
+        df['Average (mm)'] = avg_list
+        
+        # set dataframe to dictionary
+        self.monthly_avg[station_name] = df
+        
+        if not os.path.exists( os.path.join( self.path, 'result_csv') ):
+            os.mkdir(os.path.join( self.path, 'result_csv') )
+        df.to_csv( os.path.join( self.path, 'result_csv', station_name+'_monthly_avg.csv' ) )       
             
+    def calculate_average_rainfall_yearly( self, station_name ):
+        ''' This function calculates average rainfall monthly
+        '''
+        # filename
+        filename = station_name + '.csv'
+        assert filename in self.data_filename_list
+
+        # read csv using pandas
+        data = pd.read_csv( os.path.join( self.path, filename ) )
+            
+        # process data
+        temp_data = {}
+        count_data = {}
+        year = []
+        for index, row in data.iterrows():
+            data_date = row['Date']
+            date_info = data_date.split('/')
+            data_year = date_info[2]
+            if data_year not in year:
+                year.append(data_year)
+            data_rain = row['Rain (mm)']
+            
+            if data_date not in temp_data.keys():
+                temp_data[data_year] = float(data_rain)
+                count_data[data_year] = 1
+            else:
+                temp_data[data_year] += float(data_rain)
+                count_data[data_year] += 1
+        
+        # calculate average and put in dataframe
+        avg_list = []
+        for y in year:
+            avg = temp_data[y]/count_data[y]
+            avg_list.append( avg )
+        
+        # initial value
+        df = pd.DataFrame(columns=['Year','Average (mm)'])
+        df['Year'] = year
+        df['Average (mm)'] = avg_list
+        
+        # set dataframe to dictionary
+        self.yearly_avg[station_name] = df
+        
+        if not os.path.exists( os.path.join( self.path, 'result_csv') ):
+            os.mkdir(os.path.join( self.path, 'result_csv') )
+        df.to_csv( os.path.join( self.path, 'result_csv', station_name+'_yearly_avg.csv' ) )            
         
         
  
