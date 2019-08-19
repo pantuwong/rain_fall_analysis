@@ -1,8 +1,10 @@
 import os
+from datetime import datetime
 
 import pandas as pd 
-import matplotlib.pyplot as plt
+from openpyxl import load_workbook
 
+import matplotlib.pyplot as plt
 import seaborn as sns
 
 
@@ -23,6 +25,20 @@ def get_stationname_list( filename_list ):
     '''
     return [ os.path.splitext( filename )[0] for filename in filename_list ]
 
+def save_xls( dframe, path, sheet_name ):
+    ''' This function save dataframe to excel file
+    '''  
+    if os.path.exists(path): 
+        book = load_workbook(path)
+        writer = pd.ExcelWriter(path, engine='openpyxl')
+        writer.book = book
+        writer.sheets = dict((ws.title, ws) for ws in book.worksheets)
+        dframe.to_excel(writer, sheet_name )
+        writer.save()
+    else: 
+        writer = path.ExcelWriter(path)
+        dframe.to_excel(writer, sheet_name )
+        writer.save() 
 
 ''' This is the main module for rainfall analysis
 '''
@@ -41,11 +57,33 @@ class RainFallAnalyzer:
         self.station_name_list = get_stationname_list( self.data_filename_list ) 
         
         # define variables
+        self.dataframe = None
         self.daily_avg = None
         self.monthly_avg = None
         self.yearly_avg = None
         self.daily_peak = None
-        
+    
+    def createYearMonthDay( self, station_name ):
+        #converting the type of Invoice Date Field from string to datetime.
+        self.dataframe[station_name]['Date'] = pd.to_datetime(self.dataframe[station_name]['Date'])
+
+        #creating YearMonthDay field for the ease of reporting and visualization
+        self.dataframe[station_name]['YearMonthDay'] =  self.dataframe[station_name]['Date'].map(lambda date: 10000*date.year + 100*date.month + date.day)
+    
+    def createYearMonth( self, station_name ):
+        #converting the type of Invoice Date Field from string to datetime.
+        self.dataframe[station_name]['Date'] = pd.to_datetime(self.dataframe[station_name]['Date'])
+
+        #creating YearMonthDay field for the ease of reporting and visualization
+        self.dataframe[station_name]['YearMonth'] =  self.dataframe[station_name]['Date'].map(lambda date: 100*date.year + date.month )
+    
+    def createYear( self, station_name ):
+        #converting the type of Invoice Date Field from string to datetime.
+        self.dataframe[station_name]['Date'] = pd.to_datetime(self.dataframe[station_name]['Date'])
+
+        #creating YearMonthDay field for the ease of reporting and visualization
+        self.dataframe[station_name]['Year'] =  self.dataframe[station_name]['Date'].map(lambda date: date.year ) 
+
     def calculate_average_rainfall_daily( self, station_name ):
         ''' This function calculates average rainfall daily
         '''
@@ -58,44 +96,31 @@ class RainFallAnalyzer:
         assert filename in self.data_filename_list
 
         # read csv using pandas
-        data = pd.read_csv( os.path.join( self.path, filename ) )
-        
-        # get all date
-        date = data.Date.unique()
-        
-        # count date
-        count = data.Date.value_counts()
-        
-        # process data
-        temp_data = {}
-        for index, row in data.iterrows():
-            data_date = row['Date']
-            data_rain = row['Rain (mm)']
-            
-            if data_date not in temp_data.keys():
-                temp_data[data_date] = float(data_rain)
-            else:
-                temp_data[data_date] += float(data_rain)
-        
-        # calculate average and put in dataframe
-        date_list = []
-        avg_list = []
-        for d in date:
-            avg = temp_data[d]/count[d]
-            date_list.append( d )
-            avg_list.append( avg )
-        
-        # initial value
-        df = pd.DataFrame(columns=['Date','Average (mm)'])
-        df['Date'] = date_list
-        df['Average (mm)'] = avg_list
-        
+        if self.dataframe == None:
+            self.dataframe = {}
+        if station_name not in self.dataframe.keys():
+            # read data from csv 
+            self.dataframe[station_name] = pd.read_csv( os.path.join( self.path, filename ) )
+
+            # group data by date, month(year-month), year
+            self.createYearMonthDay( station_name )    
+            self.createYearMonth( station_name )
+            self.createYear( station_name )
+
+        # calculate daily average
+        tmp_df_daily_avg =  self.dataframe[station_name].groupby('YearMonthDay')['Rain (mm)'].mean().reset_index()
+        tmp_df_daily_avg = tmp_df_daily_avg.round(2)
+        tmp_df_daily_avg['Date'] = tmp_df_daily_avg['YearMonthDay'].map( lambda date: str(date)[6:8]+'/'+str(date)[4:6]+'/'+str(date)[:4]  )
+        df_daily_avg = tmp_df_daily_avg[['Date','Rain (mm)']].copy()
+        df_daily_avg.rename(columns={'Rain (mm)':'Daily Avg (mm)'}, inplace=True)
+
         # set dataframe to dictionary
-        self.daily_avg[station_name] = df
+        self.daily_avg[station_name] = df_daily_avg
         
-        if not os.path.exists( os.path.join( self.path, 'result_csv') ):
-            os.mkdir(os.path.join( self.path, 'result_csv') )       
-        df.to_csv( os.path.join( self.path, 'result_csv', station_name+'_daily_avg.csv' ) )
+        if not os.path.exists( os.path.join( self.path, 'result_xlsx') ):
+            os.mkdir(os.path.join( self.path, 'result_xlsx') )     
+        
+        save_xls( df_daily_avg, os.path.join( self.path, 'result_xlsx', station_name+'.xlsx' ), 'Daily Average' )
     
     def calculate_average_rainfall_monthly( self, station_name ):
         ''' This function calculates average rainfall monthly
@@ -109,45 +134,32 @@ class RainFallAnalyzer:
         assert filename in self.data_filename_list
 
         # read csv using pandas
-        data = pd.read_csv( os.path.join( self.path, filename ) )
+        if self.dataframe == None:
+            self.dataframe = {}
+        if station_name not in self.dataframe.keys():
+            # read data from csv 
+            self.dataframe[station_name] = pd.read_csv( os.path.join( self.path, filename ) )
+
+            # group data by date, month(year-month), year
+            self.createYearMonthDay( station_name )    
+            self.createYearMonth( station_name )
+            self.createYear( station_name )
             
-        # process data
-        temp_data = {}
-        count_data = {}
-        month = []
-        for index, row in data.iterrows():
-            data_date = row['Date']
-            date_info = data_date.split('/')
-            data_month = date_info[1]+'/'+date_info[2]
-            if data_month not in month:
-                month.append(data_month)
-            data_rain = row['Rain (mm)']
-            
-            if data_date not in temp_data.keys():
-                temp_data[data_month] = float(data_rain)
-                count_data[data_month] = 1
-            else:
-                temp_data[data_month] += float(data_rain)
-                count_data[data_month] += 1
-        
-        # calculate average and put in dataframe
-        avg_list = []
-        for m in month:
-            avg = temp_data[m]/count_data[m]
-            avg_list.append( avg )
-        
-        # initial value
-        df = pd.DataFrame(columns=['Month','Average (mm)'])
-        df['Month'] = month
-        df['Average (mm)'] = avg_list
+        # calculate monthly average
+        tmp_df_monthly_avg =  self.dataframe[station_name].groupby('YearMonth')['Rain (mm)'].mean().reset_index()
+        tmp_df_monthly_avg = tmp_df_monthly_avg.round(2)
+        tmp_df_monthly_avg['Month'] = tmp_df_monthly_avg['YearMonth'].map( lambda date: str(date)[4:6]+'/'+str(date)[:4]  )
+        df_monthly_avg = tmp_df_monthly_avg[['Month','Rain (mm)']].copy()
+        df_monthly_avg.rename(columns={'Rain (mm)':'Daily Avg (mm)'}, inplace=True)
         
         # set dataframe to dictionary
-        self.monthly_avg[station_name] = df
+        self.monthly_avg[station_name] = df_monthly_avg
         
-        if not os.path.exists( os.path.join( self.path, 'result_csv') ):
-            os.mkdir(os.path.join( self.path, 'result_csv') )
-        df.to_csv( os.path.join( self.path, 'result_csv', station_name+'_monthly_avg.csv' ) )       
-            
+        if not os.path.exists( os.path.join( self.path, 'result_xlsx') ):
+            os.mkdir(os.path.join( self.path, 'result_xlsx') )       
+
+        save_xls( df_monthly_avg, os.path.join( self.path, 'result_xlsx', station_name+'.xlsx' ), 'Monthly Average' )
+
     def calculate_average_rainfall_yearly( self, station_name ):
         ''' This function calculates average rainfall monthly
         '''
@@ -160,44 +172,32 @@ class RainFallAnalyzer:
         assert filename in self.data_filename_list
 
         # read csv using pandas
-        data = pd.read_csv( os.path.join( self.path, filename ) )
+        if self.dataframe == None:
+            self.dataframe = {}
+        if station_name not in self.dataframe.keys():
+            # read data from csv 
+            self.dataframe[station_name] = pd.read_csv( os.path.join( self.path, filename ) )
+
+            # group data by date, month(year-month), year
+            self.createYearMonthDay( station_name )    
+            self.createYearMonth( station_name )
+            self.createYear( station_name )
             
-        # process data
-        temp_data = {}
-        count_data = {}
-        year = []
-        for index, row in data.iterrows():
-            data_date = row['Date']
-            date_info = data_date.split('/')
-            data_year = date_info[2]
-            if data_year not in year:
-                year.append(data_year)
-            data_rain = row['Rain (mm)']
-            
-            if data_date not in temp_data.keys():
-                temp_data[data_year] = float(data_rain)
-                count_data[data_year] = 1
-            else:
-                temp_data[data_year] += float(data_rain)
-                count_data[data_year] += 1
-        
-        # calculate average and put in dataframe
-        avg_list = []
-        for y in year:
-            avg = temp_data[y]/count_data[y]
-            avg_list.append( avg )
-        
-        # initial value
-        df = pd.DataFrame(columns=['Year','Average (mm)'])
-        df['Year'] = year
-        df['Average (mm)'] = avg_list
+        # calculate monthly average
+        tmp_df_yearly_avg =  self.dataframe[station_name].groupby('Year')['Rain (mm)'].mean().reset_index()
+        tmp_df_yearly_avg = tmp_df_yearly_avg.round(2)
+        tmp_df_yearly_avg['Year'] = tmp_df_yearly_avg['Year'].map( lambda date: str(date)  )
+        df_yearly_avg = tmp_df_yearly_avg[['Year','Rain (mm)']].copy()
+        df_yearly_avg.rename(columns={'Rain (mm)':'Daily Avg (mm)'}, inplace=True)
         
         # set dataframe to dictionary
-        self.yearly_avg[station_name] = df
+        self.yearly_avg[station_name] = df_yearly_avg
         
-        if not os.path.exists( os.path.join( self.path, 'result_csv') ):
-            os.mkdir(os.path.join( self.path, 'result_csv') )
-        df.to_csv( os.path.join( self.path, 'result_csv', station_name+'_yearly_avg.csv' ) )        
+        if not os.path.exists( os.path.join( self.path, 'result_xlsx') ):
+            os.mkdir(os.path.join( self.path, 'result_xlsx') )       
+
+        save_xls( df_yearly_avg, os.path.join( self.path, 'result_xlsx', station_name+'.xlsx' ), 'Yearly Average' )
+
 
     def calculate_peak_rainfall_daily( self, station_name ):
         ''' This function calculates average rainfall daily
@@ -211,93 +211,29 @@ class RainFallAnalyzer:
         assert filename in self.data_filename_list
 
         # read csv using pandas
-        data = pd.read_csv( os.path.join( self.path, filename ) )
-        
-        # get all date
-        date = data.Date.unique()
-        
-        # process data
-        temp_data = {}
-        for index, row in data.iterrows():
-            data_date = row['Date']
-            data_rain = row['Rain (mm)']
-            
-            if data_date not in temp_data.keys():
-                temp_data[data_date] = float(data_rain)
-            else:
-                if float(data_rain) > temp_data[data_date]:
-                    temp_data[data_date] = float(data_rain)
-        
-        # calculate average and put in dataframe
-        date_list = []
-        peak_list = []
-        type_list = []
-        for d in date:
-            peak = temp_data[d]
-            date_list.append( d )
-            peak_list.append( peak )
-            if peak <= 10:
-                type_list.append('light')
-            elif peak <= 30:
-                type_list.append('moderate')
-            elif peak <= 60:
-                type_list.append('heavy')
-            else:
-                type_list.append('very heavy')
-        
-        # initial value
-        df = pd.DataFrame(columns=['Date','Peak (mm)','Intensity'])
-        df['Date'] = date_list
-        df['Peak (mm)'] = peak_list
-        df['Intensity'] = type_list
-        
+        if self.dataframe == None:
+            self.dataframe = {}
+        if station_name not in self.dataframe.keys():
+            # read data from csv 
+            self.dataframe[station_name] = pd.read_csv( os.path.join( self.path, filename ) )
+
+            # group data by date, month(year-month), year
+            self.createYearMonthDay( station_name )    
+            self.createYearMonth( station_name )
+            self.createYear( station_name )
+
+        # calculate daily average
+        tmp_df_daily_peak =  self.dataframe[station_name].groupby('YearMonthDay')['Rain (mm)'].max().reset_index()
+        tmp_df_daily_peak = tmp_df_daily_peak.round(2)
+        tmp_df_daily_peak['Date'] = tmp_df_daily_peak['YearMonthDay'].map( lambda date: str(date)[6:8]+'/'+str(date)[4:6]+'/'+str(date)[:4]  )
+        df_daily_peak = tmp_df_daily_peak[['Date','Rain (mm)']].copy()
+        df_daily_peak.rename(columns={'Rain (mm)':'Daily Avg (mm)'}, inplace=True)
+
         # set dataframe to dictionary
-        self.daily_peak[station_name] = df
+        self.daily_peak[station_name] = df_daily_peak
         
-        if not os.path.exists( os.path.join( self.path, 'result_csv') ):
-            os.mkdir(os.path.join( self.path, 'result_csv') )       
-        df.to_csv( os.path.join( self.path, 'result_csv', station_name+'_daily_peak.csv' ) )
+        if not os.path.exists( os.path.join( self.path, 'result_xlsx') ):
+            os.mkdir(os.path.join( self.path, 'result_xlsx') )     
+        
+        save_xls( df_daily_peak, os.path.join( self.path, 'result_xlsx', station_name+'.xlsx' ), 'Daily Peak' )
          
-    def seasonal_trend( self, station_name, year ):
-        
-        #   calculate monthly average
-        if self.monthly_avg == None:
-            self.calculate_average_rainfall_monthly( station_name )
-        
-        #   get monthy average dataframe
-        df = self.monthly_avg[station_name]
-        
-        #   filter dataframe to be only the year
-        df_filtered = pd.DataFrame(columns=['Month','Average (mm)'])
-        filter_month = []
-        filter_rain = []
-        custom_pallete = {}
-        for index, row in df.iterrows():
-            month = row['Month']
-            if str(year) in month:
-                avg = row['Average (mm)']
-                filter_month.append(month)
-                filter_rain.append(avg)
-                splt = month.split('/')
-                m = int(splt[0])
-                if m >= 6 and m <= 9:
-                    custom_pallete[month] = 'b'
-                else:
-                    custom_pallete[month] = 'r'
-        df_filtered['Month'] = filter_month
-        df_filtered['Average (mm)'] = filter_rain
-        
-        #   plot
-        plt.figure(figsize=(16,9), dpi=100)
-        ax = sns.lineplot(x="Month", y="Average (mm)",  palette=custom_pallete, data=df_filtered)
-        plt.xticks(rotation=45)
-        plt.title('Seasonal Trend ('+str(year)+')')
-        plt.axvspan(0, 5, facecolor='r', alpha=0.2)
-        plt.axvspan(5, 8, facecolor='g', alpha=0.2)
-        plt.axvspan(8, 12, facecolor='r', alpha=0.2)
-  
-        if not os.path.exists( os.path.join( self.path, 'result_png') ):
-            os.mkdir(os.path.join( self.path, 'result_png') )     
-        plt.savefig(  os.path.join( self.path, 'result_png', station_name+'_seasonal_trend_'+str(year)+'.png' ) )
-        
- 
