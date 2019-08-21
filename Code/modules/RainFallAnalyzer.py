@@ -36,7 +36,7 @@ def save_xls( dframe, path, sheet_name ):
         dframe.to_excel(writer, sheet_name )
         writer.save()
     else: 
-        writer = path.ExcelWriter(path)
+        writer = pd.ExcelWriter(path)
         dframe.to_excel(writer, sheet_name )
         writer.save() 
 
@@ -64,26 +64,13 @@ class RainFallAnalyzer:
         self.daily_peak = None
     
     def createYearMonthDay( self, station_name ):
-        #converting the type of Invoice Date Field from string to datetime.
-        self.dataframe[station_name]['Date'] = pd.to_datetime(self.dataframe[station_name]['Date'])
-
         #creating YearMonthDay field for the ease of reporting and visualization
-        self.dataframe[station_name]['YearMonthDay'] =  self.dataframe[station_name]['Date'].map(lambda date: 10000*date.year + 100*date.month + date.day)
+        self.dataframe[station_name]['YearMonthDay'] =  self.dataframe[station_name]['Date'].map(lambda date: str(10000*date.year + 100*date.month + date.day))
     
     def createYearMonth( self, station_name ):
-        #converting the type of Invoice Date Field from string to datetime.
-        self.dataframe[station_name]['Date'] = pd.to_datetime(self.dataframe[station_name]['Date'])
-
         #creating YearMonthDay field for the ease of reporting and visualization
-        self.dataframe[station_name]['YearMonth'] =  self.dataframe[station_name]['Date'].map(lambda date: 100*date.year + date.month )
+        self.dataframe[station_name]['YearMonth'] =  self.dataframe[station_name]['Date'].map(lambda date: str(100*date.year + date.month) )
     
-    def createYear( self, station_name ):
-        #converting the type of Invoice Date Field from string to datetime.
-        self.dataframe[station_name]['Date'] = pd.to_datetime(self.dataframe[station_name]['Date'])
-
-        #creating YearMonthDay field for the ease of reporting and visualization
-        self.dataframe[station_name]['Year'] =  self.dataframe[station_name]['Date'].map(lambda date: date.year ) 
-
     def calculate_average_rainfall_daily( self, station_name ):
         ''' This function calculates average rainfall daily
         '''
@@ -101,11 +88,11 @@ class RainFallAnalyzer:
         if station_name not in self.dataframe.keys():
             # read data from csv 
             self.dataframe[station_name] = pd.read_csv( os.path.join( self.path, filename ) )
-
+            self.dataframe[station_name]['Date'] = self.dataframe[station_name]['Date'].map(lambda date: datetime.strptime(date,'%d/%m/%Y') ) 
+            
             # group data by date, month(year-month), year
             self.createYearMonthDay( station_name )    
             self.createYearMonth( station_name )
-            self.createYear( station_name )
 
         # calculate daily average
         tmp_df_daily_avg =  self.dataframe[station_name].groupby('YearMonthDay')['Rain (mm)'].mean().reset_index()
@@ -139,18 +126,18 @@ class RainFallAnalyzer:
         if station_name not in self.dataframe.keys():
             # read data from csv 
             self.dataframe[station_name] = pd.read_csv( os.path.join( self.path, filename ) )
+            self.dataframe[station_name]['Date'] = self.dataframe[station_name]['Date'].map(lambda date: datetime.strptime(date,'%d/%m/%Y') ) 
 
             # group data by date, month(year-month), year
             self.createYearMonthDay( station_name )    
             self.createYearMonth( station_name )
-            self.createYear( station_name )
-            
+
         # calculate monthly average
         tmp_df_monthly_avg =  self.dataframe[station_name].groupby('YearMonth')['Rain (mm)'].mean().reset_index()
         tmp_df_monthly_avg = tmp_df_monthly_avg.round(2)
         tmp_df_monthly_avg['Month'] = tmp_df_monthly_avg['YearMonth'].map( lambda date: str(date)[4:6]+'/'+str(date)[:4]  )
         df_monthly_avg = tmp_df_monthly_avg[['Month','Rain (mm)']].copy()
-        df_monthly_avg.rename(columns={'Rain (mm)':'Daily Avg (mm)'}, inplace=True)
+        df_monthly_avg.rename(columns={'Rain (mm)':'Monthly Avg (mm)'}, inplace=True)
         
         # set dataframe to dictionary
         self.monthly_avg[station_name] = df_monthly_avg
@@ -176,19 +163,24 @@ class RainFallAnalyzer:
             self.dataframe = {}
         if station_name not in self.dataframe.keys():
             # read data from csv 
-            self.dataframe[station_name] = pd.read_csv( os.path.join( self.path, filename ) )
+            self.dataframe[station_name] = pd.read_csv( os.path.join( self.path, filename ) )          
+            self.dataframe[station_name]['Date'] = self.dataframe[station_name]['Date'].map(lambda date: datetime.strptime(date,'%d/%m/%Y') ) 
 
             # group data by date, month(year-month), year
             self.createYearMonthDay( station_name )    
             self.createYearMonth( station_name )
-            self.createYear( station_name )
+
+        if station_name not in self.monthly_avg.keys():
+            self.calculate_average_rainfall_monthly( station_name )
             
         # calculate monthly average
-        tmp_df_yearly_avg =  self.dataframe[station_name].groupby('Year')['Rain (mm)'].mean().reset_index()
+        tmp_df_yearly =  self.monthly_avg[station_name].copy()
+        tmp_df_yearly['Date'] = tmp_df_yearly['Month'].map(lambda date: datetime.strptime(date,'%m/%Y') )
+        tmp_df_yearly['Year'] = tmp_df_yearly['Date'].map(lambda date: str(date.year) )
+        tmp_df_yearly_avg = tmp_df_yearly.groupby('Year')['Monthly Avg (mm)'].sum().reset_index()
         tmp_df_yearly_avg = tmp_df_yearly_avg.round(2)
-        tmp_df_yearly_avg['Year'] = tmp_df_yearly_avg['Year'].map( lambda date: str(date)  )
-        df_yearly_avg = tmp_df_yearly_avg[['Year','Rain (mm)']].copy()
-        df_yearly_avg.rename(columns={'Rain (mm)':'Daily Avg (mm)'}, inplace=True)
+        df_yearly_avg = tmp_df_yearly_avg[['Year','Monthly Avg (mm)']].copy()
+        df_yearly_avg.rename(columns={'Monthly Avg (mm)':'Yearly Avg (mm)'}, inplace=True)
         
         # set dataframe to dictionary
         self.yearly_avg[station_name] = df_yearly_avg
@@ -222,12 +214,24 @@ class RainFallAnalyzer:
             self.createYearMonth( station_name )
             self.createYear( station_name )
 
-        # calculate daily average
+        # calculate daily peak
         tmp_df_daily_peak =  self.dataframe[station_name].groupby('YearMonthDay')['Rain (mm)'].max().reset_index()
         tmp_df_daily_peak = tmp_df_daily_peak.round(2)
         tmp_df_daily_peak['Date'] = tmp_df_daily_peak['YearMonthDay'].map( lambda date: str(date)[6:8]+'/'+str(date)[4:6]+'/'+str(date)[:4]  )
-        df_daily_peak = tmp_df_daily_peak[['Date','Rain (mm)']].copy()
-        df_daily_peak.rename(columns={'Rain (mm)':'Daily Avg (mm)'}, inplace=True)
+
+        def intensity( val ):
+            if val <= 10:
+                return 'Light'
+            elif val <= 30:
+                return 'Moderate'
+            elif val <= 60:
+                return 'Heavey'
+            else:
+                return 'Very Heavey'
+
+        tmp_df_daily_peak['Rain Intensity'] = tmp_df_daily_peak['Rain (mm)'].map( lambda val: intensity(val))
+        df_daily_peak = tmp_df_daily_peak[['Date','Rain (mm)','Rain Intensity']].copy()
+        df_daily_peak.rename(columns={'Rain (mm)':'Daily Peak (mm)'}, inplace=True)
 
         # set dataframe to dictionary
         self.daily_peak[station_name] = df_daily_peak
