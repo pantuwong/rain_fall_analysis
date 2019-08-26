@@ -12,4 +12,5 @@ if __name__ == '__main__':
         rfa.calculate_average_rainfall_yearly( station_name )
     
         rfa.calculate_peak_rainfall_daily( station_name )
-      
+        
+        rfa.calculate_annual_sum( station_name )

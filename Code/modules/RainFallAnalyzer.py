@@ -7,6 +7,8 @@ from openpyxl import load_workbook
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+import numpy as np
+
 
 def get_filename_list( path ):
     ''' This function gets all .csv file in this path
@@ -33,11 +35,11 @@ def save_xls( dframe, path, sheet_name ):
         writer = pd.ExcelWriter(path, engine='openpyxl')
         writer.book = book
         writer.sheets = dict((ws.title, ws) for ws in book.worksheets)
-        dframe.to_excel(writer, sheet_name )
+        dframe.to_excel(writer, sheet_name, na_rep='N/A' )
         writer.save()
     else: 
         writer = pd.ExcelWriter(path)
-        dframe.to_excel(writer, sheet_name )
+        dframe.to_excel(writer, sheet_name, na_rep='N/A' )
         writer.save() 
 
 ''' This is the main module for rainfall analysis
@@ -62,6 +64,7 @@ class RainFallAnalyzer:
         self.monthly_avg = None
         self.yearly_avg = None
         self.daily_peak = None
+        self.annual_sum = None
     
     def createYearMonthDay( self, station_name ):
         #creating YearMonthDay field for the ease of reporting and visualization
@@ -212,7 +215,6 @@ class RainFallAnalyzer:
             # group data by date, month(year-month), year
             self.createYearMonthDay( station_name )    
             self.createYearMonth( station_name )
-            self.createYear( station_name )
 
         # calculate daily peak
         tmp_df_daily_peak =  self.dataframe[station_name].groupby('YearMonthDay')['Rain (mm)'].max().reset_index()
@@ -240,4 +242,83 @@ class RainFallAnalyzer:
             os.mkdir(os.path.join( self.path, 'result_xlsx') )     
         
         save_xls( df_daily_peak, os.path.join( self.path, 'result_xlsx', station_name+'.xlsx' ), 'Daily Peak' )
-         
+
+    def calculate_annual_sum( self, station_name ):
+        ''' This function calculates average rainfall monthly
+        '''
+        
+        if self.annual_sum == None:
+            self.annual_sum = {}
+            
+        # filename
+        filename = station_name + '.csv'
+        assert filename in self.data_filename_list
+
+        # read csv using pandas
+        if self.dataframe == None:
+            self.dataframe = {}
+        if station_name not in self.dataframe.keys():
+            # read data from csv 
+            self.dataframe[station_name] = pd.read_csv( os.path.join( self.path, filename ) )          
+            self.dataframe[station_name]['Date'] = self.dataframe[station_name]['Date'].map(lambda date: datetime.strptime(date,'%d/%m/%Y') ) 
+
+            # group data by date, month(year-month), year
+            self.createYearMonthDay( station_name )    
+            self.createYearMonth( station_name )
+
+        if station_name not in self.monthly_avg.keys():
+            self.calculate_average_rainfall_monthly( station_name )         
+        
+        # dictionary for summary data
+        annual_sum_list = []
+        processed_year = []
+
+        # iterate in each row of monthly average
+        for index, row in self.monthly_avg[station_name].iterrows():
+            m = row['Month']
+            r = row['Monthly Avg (mm)']
+            
+            m_data = m.split('/')
+            m = int(m_data[0])
+            y = int(m_data[1])
+
+            if y not in processed_year:
+                initial_list = [y]
+                initial_list.extend([np.nan for i in range(15)])
+                annual_sum_list.append(initial_list)
+                annual_sum_list[-1][m] = r
+                processed_year.append(y)
+            else:
+                annual_sum_list[-1][m] = r
+
+            if m == 12:
+                winter_data = [annual_sum_list[-1][1], annual_sum_list[-1][2], annual_sum_list[-1][11], annual_sum_list[-1][12]] 
+                if None in winter_data:
+                    annual_sum_list[-1][13] = None
+                else:
+                    annual_sum_list[-1][13] = sum( winter_data )/4.0
+                
+                rainny_data = [annual_sum_list[-1][5], annual_sum_list[-1][6], annual_sum_list[-1][7], annual_sum_list[-1][8]]
+                if None in rainny_data:
+                    annual_sum_list[-1][14] = None
+                else:
+                    annual_sum_list[-1][14] = sum( rainny_data )/4.0
+                
+                if None in annual_sum_list[-1][1:13]:
+                    annual_sum_list[-1][15] = None
+                else:
+                    annual_sum_list[-1][15] = sum( annual_sum_list[-1][1:13] )/12.0
+
+        # create dataframe from list
+        df = pd.DataFrame( annual_sum_list, columns = ['Year','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','NEM','SWM','Annual Avg'])
+        df = df.round(2)
+        self.annual_sum[station_name] = df
+
+        # save to xlsx
+        if not os.path.exists( os.path.join( self.path, 'result_xlsx') ):
+            os.mkdir(os.path.join( self.path, 'result_xlsx') )     
+        
+        save_xls( df, os.path.join( self.path, 'result_xlsx', station_name+'.xlsx' ), 'Annual Summary' )
+            
+
+            
