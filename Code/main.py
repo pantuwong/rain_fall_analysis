@@ -14,3 +14,5 @@ if __name__ == '__main__':
         rfa.calculate_peak_rainfall_daily( station_name )
         
         rfa.calculate_annual_sum( station_name )
+        rfa.create_scatter_plot( station_name )
+        rfa.create_line_plot( station_name )

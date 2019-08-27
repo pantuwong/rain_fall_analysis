@@ -65,6 +65,7 @@ class RainFallAnalyzer:
         self.yearly_avg = None
         self.daily_peak = None
         self.annual_sum = None
+        self.scatter_plot_data = []
     
     def createYearMonthDay( self, station_name ):
         #creating YearMonthDay field for the ease of reporting and visualization
@@ -249,6 +250,7 @@ class RainFallAnalyzer:
         
         if self.annual_sum == None:
             self.annual_sum = {}
+            self.scatter_plot_data = {}
             
         # filename
         filename = station_name + '.csv'
@@ -272,11 +274,14 @@ class RainFallAnalyzer:
         # dictionary for summary data
         annual_sum_list = []
         processed_year = []
+        scatter_plot = []
 
         # iterate in each row of monthly average
         for index, row in self.monthly_avg[station_name].iterrows():
             m = row['Month']
             r = row['Monthly Avg (mm)']
+
+            scatter_plot.append([m,r])
             
             m_data = m.split('/')
             m = int(m_data[0])
@@ -290,7 +295,7 @@ class RainFallAnalyzer:
                 processed_year.append(y)
             else:
                 annual_sum_list[-1][m] = r
-
+            
             if m == 12:
                 winter_data = [annual_sum_list[-1][1], annual_sum_list[-1][2], annual_sum_list[-1][11], annual_sum_list[-1][12]] 
                 if None in winter_data:
@@ -313,12 +318,77 @@ class RainFallAnalyzer:
         df = pd.DataFrame( annual_sum_list, columns = ['Year','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','NEM','SWM','Annual Avg'])
         df = df.round(2)
         self.annual_sum[station_name] = df
+        sdf = pd.DataFrame( scatter_plot, columns = ['Month of Date', 'Average Rain (mm)'] )
+        sdf = sdf.round(2)
+        self.scatter_plot_data[station_name] = sdf
 
         # save to xlsx
         if not os.path.exists( os.path.join( self.path, 'result_xlsx') ):
             os.mkdir(os.path.join( self.path, 'result_xlsx') )     
         
         save_xls( df, os.path.join( self.path, 'result_xlsx', station_name+'.xlsx' ), 'Annual Summary' )
-            
+    
+    def create_scatter_plot( self, station_name ):
+        ''' This function create scatter plot from each station
+        '''
+
+        if ( self.annual_sum == None ) or ( station_name not in self.annual_sum.keys() ):
+            self.calculate_annual_sum( station_name )
+
+        df = self.scatter_plot_data[station_name]
+        df = df.round(2)
+        xtick = []
+        r = []
+        for index, row in df.iterrows():
+            m = row['Month of Date']
+            m_data = m.split('/')
+            m = int(m_data[0])
+            if m == 1:
+                xtick.append(int(m_data[1]))
+            else:
+                xtick.append('')
+            r.append(row['Average Rain (mm)'])
+
+        #build the plot
+        plt.figure(figsize=(16,9))
+        plot = sns.scatterplot("Month of Date", "Average Rain (mm)", data=df, hue='Average Rain (mm)')
+        l = plot.legend_
+        for t in l.texts :
+            if t.get_text() !=  "Average Rain (mm)":
+                t.set_text("{0:.2f}".format(float(t.get_text())))
+        plot.set(ylabel='Average Rain(mm)', xlabel='Month of Date') #add labels
+
+        plt.xticks(df['Month of Date'], xtick, rotation=90)
+        plt.axhline(y=sum(r)/len(r),linestyle='--')
+        plt.text(0,(sum(r)/len(r))+0.01,'Average')
+        # save to png
+        if not os.path.exists( os.path.join( self.path, 'result_png') ):
+            os.mkdir(os.path.join( self.path, 'result_png') )  
+        plt.savefig( os.path.join( self.path, 'result_png', station_name+'_scatter_plot.png' ), dpi = 300)
+        
+        
+    def create_line_plot( self, station_name ):
+        ''' This function create line plot for each station
+        '''
+
+        if ( self.annual_sum == None ) or ( station_name not in self.annual_sum.keys() ):
+            self.calculate_annual_sum( station_name )
+        
+        df = self.annual_sum[station_name]
+        xtick = []
+        for index, row in df.iterrows():
+            xtick.append(int(row['Year']))
+        
+        plt.figure(figsize=(16,9))
+        plot = sns.lineplot(x="Year", y="Annual Avg", data=df )
+        plot = plot.set(ylabel='Annaul Avg', xlabel='Year')
+
+        plt.xticks(df['Year'],xtick,rotation=90)
+        # save to png
+        if not os.path.exists( os.path.join( self.path, 'result_png') ):
+            os.mkdir(os.path.join( self.path, 'result_png') )  
+        plt.savefig( os.path.join( self.path, 'result_png', station_name+'_line_plot.png' ), dpi = 300)
+
+
 
             
