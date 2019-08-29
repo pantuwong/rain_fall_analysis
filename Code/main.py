@@ -16,3 +16,5 @@ if __name__ == '__main__':
         rfa.calculate_annual_sum( station_name )
         rfa.create_scatter_plot( station_name )
         rfa.create_line_plot( station_name )
+    
+    rfa.create_multi_line_plot()

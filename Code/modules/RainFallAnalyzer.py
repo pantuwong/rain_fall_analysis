@@ -390,5 +390,41 @@ class RainFallAnalyzer:
         plt.savefig( os.path.join( self.path, 'result_png', station_name+'_line_plot.png' ), dpi = 300)
 
 
+    def create_multi_line_plot( self ):
+        ''' This function create multiple line plot for all station
+        '''
+
+        if ( self.annual_sum == None ):
+            self.calculate_annual_sum( station_name )
+
+        # create empty list
+        data_list = []
+        xtick = []
+
+        # for each station name
+        for station_name in self.station_name_list:
+
+            if station_name not in self.annual_sum.keys():
+                continue
+
+            #  get dataframe
+            data_frame = self.annual_sum[station_name]
+            for index,row in data_frame.iterrows():
+                if row['Year'] not in xtick:
+                    xtick.append(row['Year'])
+                data_list.append([row['Year'],station_name,row['Annual Avg']])
+        
+        xtick.sort()
+    
+        df = pd.DataFrame(data_list,columns=['Year','Station Name','Annual Avg'])
+        plt.figure(figsize=(16,9))
+        plot = sns.lineplot(x="Year", y="Annual Avg", hue='Station Name', data=df )
+        plot = plot.set(ylabel='Annaul Avg', xlabel='Year')
+        plt.xticks(rotation=90)
+
+        if not os.path.exists( os.path.join( self.path, 'result_png') ):
+            os.mkdir(os.path.join( self.path, 'result_png') )  
+        plt.savefig( os.path.join( self.path, 'result_png', 'all_station_line_plot.png' ), dpi = 300)
+
 
             
