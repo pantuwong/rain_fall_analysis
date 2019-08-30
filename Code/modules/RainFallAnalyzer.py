@@ -394,8 +394,9 @@ class RainFallAnalyzer:
         ''' This function create multiple line plot for all station
         '''
 
-        if ( self.annual_sum == None ):
-            self.calculate_annual_sum( station_name )
+        if ( self.annual_sum == None 
+            print('Cannot generate multi-line plot. Need to calculate data for at least 1 station first')
+            return
 
         # create empty list
         data_list = []
